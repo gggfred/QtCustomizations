@@ -1,8 +1,8 @@
-#include "gtcpclient.h"
+#include "gtcpsocket.h"
 
 #include <QDebug>
 
-GTcpClient::GTcpClient(QObject *parent) :
+GTcpSocket::GTcpSocket(QObject *parent) :
   QTcpSocket(parent),
   host("127.0.0.1"),
   port(1234),
@@ -11,40 +11,45 @@ GTcpClient::GTcpClient(QObject *parent) :
     connect(this,SIGNAL(readyRead()),this,SLOT(readyReadSlot()));
     connect(this,SIGNAL(connected()),this,SLOT(connectedSlot()));
     connect(this,SIGNAL(disconnected()),this,SLOT(disconnectedSlot()));
-    connect(this,SIGNAL(stateChanged(QAbstractSocket::SocketState)),this,SLOT(stateChangedSlot(QAbstractSocket::SocketState)));
+
+    connect(this,&QTcpSocket::stateChanged,this,&GTcpSocket::stateChangedSlot);
+    connect(this,static_cast<void (QTcpSocket::*)(QAbstractSocket::SocketError)>
+            (&QAbstractSocket::error),this,&GTcpSocket::errorSlot);
+
+    this->setSocketOption(QAbstractSocket::KeepAliveOption, 1);
 }
 
-const QString &GTcpClient::getHost() const
+const QString &GTcpSocket::getHost() const
 {
     return this->host;
 }
 
-void GTcpClient::setHost(const QString &host)
+void GTcpSocket::setHost(const QString &host)
 {
     this->host = host;
 }
 
-quint16 GTcpClient::getPort() const
+quint16 GTcpSocket::getPort() const
 {
     return this->port;
 }
 
-void GTcpClient::setPort(quint16 port)
+void GTcpSocket::setPort(quint16 port)
 {
     this->port = port;
 }
 
-int GTcpClient::getConnectionTimeout() const
+int GTcpSocket::getConnectionTimeout() const
 {
     return this->connectionTimeout;
 }
 
-void GTcpClient::setConnectionTimeout(int timeout)
+void GTcpSocket::setConnectionTimeout(int timeout)
 {
     this->connectionTimeout = timeout;
 }
 
-bool GTcpClient::performConnection()
+bool GTcpSocket::performConnection()
 {
     QString res = QString("Trying to connect to %1, at port %2").arg(this->host).arg(this->port);
     qInfo() << res;
@@ -58,29 +63,34 @@ bool GTcpClient::performConnection()
     return 0;
 }
 
-void GTcpClient::readyReadSlot()
+void GTcpSocket::readyReadSlot()
 {
     QByteArray data = this->readAll();
     QString res = QString("Rx from %1 - %2").arg(host).arg(QString::fromLatin1(data));
     qInfo() << res;
 }
 
-void GTcpClient::connectedSlot()
+void GTcpSocket::connectedSlot()
 {
     qInfo() << "Connected";
 }
 
-void GTcpClient::disconnectedSlot()
+void GTcpSocket::disconnectedSlot()
 {
     qInfo() << "Disconnected";
 }
 
-void GTcpClient::stateChangedSlot(QAbstractSocket::SocketState socketState)
+void GTcpSocket::errorSlot(QAbstractSocket::SocketError socketError)
+{
+    qInfo() << "Error" << socketError;
+}
+
+void GTcpSocket::stateChangedSlot(QAbstractSocket::SocketState socketState)
 {
     qInfo() << "State Changed" << socketState;
 }
 
-void GTcpClient::writeSlot(QByteArray send)
+void GTcpSocket::writeSlot(QByteArray send)
 {
     QString res = QString("Tx to %1 - %2").arg(host).arg(QString::fromLatin1(send));
     qInfo() << res;

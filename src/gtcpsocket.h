@@ -4,11 +4,11 @@
 #include <QObject>
 #include <QTcpSocket>
 
-class GTcpClient : public QTcpSocket
+class GTcpSocket : public QTcpSocket
 {
     Q_OBJECT
 public:
-    explicit GTcpClient(QObject *parent = nullptr);
+    explicit GTcpSocket(QObject *parent = nullptr);
 
     const QString& getHost() const;
     void setHost(const QString &host);
@@ -27,6 +27,7 @@ public slots:
     void readyReadSlot();
     void connectedSlot();
     void disconnectedSlot();
+    void errorSlot(QAbstractSocket::SocketError socketError);
     void stateChangedSlot(QAbstractSocket::SocketState socketState);
     void writeSlot(QByteArray send);
 

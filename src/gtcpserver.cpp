@@ -45,7 +45,7 @@ QByteArray GTcpServer::proccess(QByteArray data)
 	if(data.isEmpty())
 		res = "Empty string\r\n";
 	else
-		res = "You ask, I answer!\r\n";
+        res = "You say good bye, I say hello!\r\n";
 
 	return res;
 }
@@ -57,15 +57,21 @@ void GTcpServer::newConnection()
 	qInfo() << res;
 	connect(socket,SIGNAL(disconnected()),this,SLOT(disconnected()));
 	connect(socket,SIGNAL(readyRead()),this,SLOT(readyRead()));
-	connect(socket,SIGNAL(stateChanged(QAbstractSocket::SocketState)),this,SLOT(stateChanged(QAbstractSocket::SocketState)));
-	connect(socket,SIGNAL(error(QAbstractSocket::SocketError)),this,SLOT(errorReceived(QAbstractSocket::SocketError)));
+
+    connect(socket,&QTcpSocket::stateChanged,this,&GTcpServer::stateChanged);
+    connect(socket,static_cast<void (QTcpSocket::*)(QAbstractSocket::SocketError)>
+            (&QAbstractSocket::error),this,&GTcpServer::errorReceived);
+
+    socket->setSocketOption(QAbstractSocket::KeepAliveOption, 1);
+    sockets.push_back(socket);
 }
 
 void GTcpServer::disconnected()
 {
 	QTcpSocket *socket = qobject_cast<QTcpSocket*>(sender());
-	qInfo() << "Client disconnected";
-	socket->deleteLater();
+    qInfo() << "Client disconnected";
+    sockets.removeOne(socket);
+    socket->deleteLater();
 }
 
 void GTcpServer::readyRead()
