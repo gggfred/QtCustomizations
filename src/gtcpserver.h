@@ -1,35 +1,35 @@
-#ifndef MYTCPSERVER_H
-#define MYTCPSERVER_H
+#ifndef GTCPSERVER_H
+#define GTCPSERVER_H
 
+#include <QDebug>
+#include <QNetworkInterface>
 #include <QObject>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QTimer>
 
 class GTcpServer : public QTcpServer
 {
-	Q_OBJECT
-public:
-	explicit GTcpServer(QObject *parent = nullptr);
+    Q_OBJECT
+  public:
+    explicit GTcpServer(QObject *parent = nullptr);
+    ~GTcpServer();
 
-	void setPort(quint16 port);
-	quint16 getPort() const;
+    quint16 port() const;
+    void setPort(quint16 newPort);
 
-	bool performListening();
+  public slots:
+    bool performListening();
+    void stop();
 
-	virtual QByteArray proccess(QByteArray data);
+  private slots:
+    void newConnection();
 
-signals:
+  signals:
+    void clientConnected(QTcpSocket *socket);
 
-public slots:
-	void newConnection();
-	void disconnected();
-	void readyRead();
-	void stateChanged(QAbstractSocket::SocketState socketState);
-	void errorReceived(QAbstractSocket::SocketError socketError);
-
-protected:
-	quint16 port;
-    QList<QTcpSocket*> sockets;
+  protected:
+    quint16 m_port;
 };
 
-#endif // MYTCPSERVER_H
+#endif // tcpServer_H
