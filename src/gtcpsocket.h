@@ -1,43 +1,52 @@
-#ifndef MYTCPCLIENT_H
-#define MYTCPCLIENT_H
+#ifndef GTCPSOCKET_H
+#define GTCPSOCKET_H
 
 #include <QObject>
 #include <QTcpSocket>
+#include <QTimer>
 
-class GTcpSocket : public QTcpSocket
+class GTcpSocket : public QObject
 {
     Q_OBJECT
-public:
+
+  public:
     explicit GTcpSocket(QObject *parent = nullptr);
+    ~GTcpSocket();
 
-    const QString& getHost() const;
-    void setHost(const QString &host);
+    const QString &ip() const;
+    void setIp(const QString &newIp);
 
-    quint16 getPort() const;
-    void setPort(quint16 port);
+    quint16 port() const;
+    void setPort(quint16 newPort);
 
-    int getConnectionTimeout() const;
-    void setConnectionTimeout(int timeout);
+    QTcpSocket *socket() const;
+    void setSocket(QTcpSocket *newSocket);
 
-    bool performConnection();
+    bool reconnect() const;
+    void setReconnect(bool newReconnect);
 
-signals:
+  signals:
+    void dataReceived(QByteArray);
+    void disconnected();
 
-public slots:
-    void readyReadSlot();
-    void connectedSlot();
-    void disconnectedSlot();
-    void errorSlot(QAbstractSocket::SocketError socketError);
-    void stateChangedSlot(QAbstractSocket::SocketState socketState);
-    void writeSlot(QByteArray send);
+  public slots:
+    void start();
+    void stop();
+    void readyRead();
+    void tryConnect();
+    void serverSettings(QString ip, int port);
+    void send(QByteArray data);
 
-protected:
-    QString host;
-    quint16 port;
+  private slots:
+    void stateChanged(QAbstractSocket::SocketState socketState);
+    void error(QAbstractSocket::SocketError socketError);
 
-    int connectionTimeout;
-
-private:
+  private:
+    QString m_ip;
+    quint16 m_port;
+    bool m_reconnect;
+    QTcpSocket *m_socket;
+    QTimer m_timer_reconnection;
 };
 
-#endif // MYTCPCLIENT_H
+#endif // GTCPSOCKET_H

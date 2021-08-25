@@ -1,98 +1,190 @@
 #include "gtcpsocket.h"
 
-#include <QDebug>
+#include <QHostAddress>
 
-GTcpSocket::GTcpSocket(QObject *parent) :
-  QTcpSocket(parent),
-  host("127.0.0.1"),
-  port(1234),
-  connectionTimeout(5000)
+GTcpSocket::GTcpSocket(QObject *parent) : QObject(parent)
 {
-    connect(this,SIGNAL(readyRead()),this,SLOT(readyReadSlot()));
-    connect(this,SIGNAL(connected()),this,SLOT(connectedSlot()));
-    connect(this,SIGNAL(disconnected()),this,SLOT(disconnectedSlot()));
-
-    connect(this,&QTcpSocket::stateChanged,this,&GTcpSocket::stateChangedSlot);
-    connect(this,static_cast<void (QTcpSocket::*)(QAbstractSocket::SocketError)>
-            (&QAbstractSocket::error),this,&GTcpSocket::errorSlot);
-
-    this->setSocketOption(QAbstractSocket::KeepAliveOption, 1);
+    connect(&m_timer_reconnection, &QTimer::timeout, this,
+            &GTcpSocket::tryConnect);
+    m_socket = nullptr;
+    m_reconnect = false;
 }
 
-const QString &GTcpSocket::getHost() const
+GTcpSocket::~GTcpSocket()
 {
-    return this->host;
+    m_timer_reconnection.stop();
+
+    disconnect(&m_timer_reconnection, &QTimer::timeout, this,
+               &GTcpSocket::tryConnect);
+
+    if (m_socket)
+    {
+        m_socket->close();
+        m_socket->deleteLater();
+    }
 }
 
-void GTcpSocket::setHost(const QString &host)
+const QString &GTcpSocket::ip() const
 {
-    this->host = host;
+    return m_ip;
 }
 
-quint16 GTcpSocket::getPort() const
+void GTcpSocket::setIp(const QString &newIp)
 {
-    return this->port;
+    m_ip = newIp;
 }
 
-void GTcpSocket::setPort(quint16 port)
+quint16 GTcpSocket::port() const
 {
-    this->port = port;
+    return m_port;
 }
 
-int GTcpSocket::getConnectionTimeout() const
+void GTcpSocket::setPort(quint16 newPort)
 {
-    return this->connectionTimeout;
+    m_port = newPort;
 }
 
-void GTcpSocket::setConnectionTimeout(int timeout)
+QTcpSocket *GTcpSocket::socket() const
 {
-    this->connectionTimeout = timeout;
+    return m_socket;
 }
 
-bool GTcpSocket::performConnection()
+void GTcpSocket::setSocket(QTcpSocket *newSocket)
 {
-    QString res = QString("Trying to connect to %1, at port %2").arg(this->host).arg(this->port);
-    qInfo() << res;
-    this->connectToHost(this->host,this->port);
+    stop();
 
-    if (!this->waitForConnected(this->connectionTimeout)){
-        qInfo() << "Time done!";
-        return -1;
+    connect(newSocket, &QTcpSocket::readyRead, this, &GTcpSocket::readyRead);
+    connect(newSocket, &QTcpSocket::stateChanged, this,
+            &GTcpSocket::stateChanged);
+    connect(newSocket, &QTcpSocket::disconnected,
+            [this]() { emit disconnected(); });
+
+    m_socket = newSocket;
+}
+
+void GTcpSocket::tryConnect()
+{
+    if (!m_socket)
+    {
+        QTcpSocket *_socket = new QTcpSocket(this);
+        setSocket(_socket);
     }
 
-    return 0;
+    if (!m_reconnect)
+        return;
+
+    if (!m_socket->isOpen())
+        m_socket->connectToHost(m_ip, m_port);
 }
 
-void GTcpSocket::readyReadSlot()
+void GTcpSocket::readyRead() // Hacer configurables los validadores
 {
-    QByteArray data = this->readAll();
-    QString res = QString("Rx from %1 - %2").arg(host).arg(QString::fromLatin1(data));
-    qInfo() << res;
+    QByteArray data;
+    QString hostAddress = m_socket->peerAddress().toString();
+
+    data = m_socket->readAll();
+
+    qInfo() << QString("%1: Rx from %2 - %3")
+                   .arg(objectName(), hostAddress, QString::fromLatin1(data));
+
+    emit dataReceived(data);
 }
 
-void GTcpSocket::connectedSlot()
+void GTcpSocket::start()
 {
-    qInfo() << "Connected";
+    tryConnect();
+    m_timer_reconnection.start(5000);
 }
 
-void GTcpSocket::disconnectedSlot()
+void GTcpSocket::stop()
 {
-    qInfo() << "Disconnected";
+    if (m_socket)
+    {
+        disconnect(m_socket, &QTcpSocket::readyRead, this,
+                   &GTcpSocket::readyRead);
+        disconnect(m_socket, &QTcpSocket::stateChanged, this,
+                   &GTcpSocket::stateChanged);
+        disconnect(m_socket, &QTcpSocket::disconnected, this,
+                   &GTcpSocket::disconnected);
+
+        m_socket->close();
+        m_socket->deleteLater();
+        m_socket = nullptr;
+    }
+
+    m_timer_reconnection.stop();
 }
 
-void GTcpSocket::errorSlot(QAbstractSocket::SocketError socketError)
+void GTcpSocket::serverSettings(QString ipx, int portx)
 {
-    qInfo() << "Error" << socketError;
+    m_ip = ipx;
+    m_port = portx;
 }
 
-void GTcpSocket::stateChangedSlot(QAbstractSocket::SocketState socketState)
+void GTcpSocket::send(QByteArray data)
 {
-    qInfo() << "State Changed" << socketState;
+    if (!m_socket)
+        return;
+
+    QString logdata;
+    QString hostAddress = m_socket->peerAddress().toString();
+
+    logdata = QString("%1: Tx to %2 - %3")
+                  .arg(objectName())
+                  .arg(hostAddress)
+                  .arg(QString::fromLatin1(data));
+    qInfo() << logdata;
+
+    m_socket->write(data);
 }
 
-void GTcpSocket::writeSlot(QByteArray send)
+void GTcpSocket::stateChanged(QAbstractSocket::SocketState socketState)
 {
-    QString res = QString("Tx to %1 - %2").arg(host).arg(QString::fromLatin1(send));
-    qInfo() << res;
-    this->write(send);
+    switch (socketState)
+    {
+    case QAbstractSocket::UnconnectedState:
+        qDebug() << QString("%1: UnconnectedState").arg(objectName());
+        stop();
+
+        if (m_reconnect)
+            m_timer_reconnection.start(5000);
+
+        emit disconnected();
+        break;
+    case QAbstractSocket::HostLookupState:
+        qDebug() << QString("%1: HostLookupState").arg(objectName());
+        break;
+    case QAbstractSocket::ConnectingState:
+        qDebug() << QString("%1: ConnectingState").arg(objectName());
+        break;
+    case QAbstractSocket::ConnectedState:
+        qDebug() << QString("%1: Conectado a %2:%3")
+                        .arg(objectName())
+                        .arg(m_ip)
+                        .arg(m_port);
+        break;
+    case QAbstractSocket::BoundState:
+        qDebug() << QString("%1: BoundState").arg(objectName());
+        break;
+    case QAbstractSocket::ListeningState:
+        qDebug() << QString("%1: ListeningState").arg(objectName());
+        break;
+    case QAbstractSocket::ClosingState:
+        qDebug() << QString("%1: ClosingState").arg(objectName());
+        break;
+    }
+}
+
+void GTcpSocket::error(QAbstractSocket::SocketError socketError)
+{
+}
+
+bool GTcpSocket::reconnect() const
+{
+    return m_reconnect;
+}
+
+void GTcpSocket::setReconnect(bool newReconnect)
+{
+    m_reconnect = newReconnect;
 }
